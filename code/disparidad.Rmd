@@ -54,3 +54,25 @@ data_c <- data_c %>% mutate(across(-departmento, as.numeric))
 glimpse(data_c)
 ```
 ## 
+
+```{r }
+# Convertir datos a formato largo
+data_long <- data_c %>%  
+  pivot_longer(
+    cols = -departmento, 
+    names_to = "variable", 
+    values_to = "valor"
+  ) %>% 
+  separate(variable, into = c('tipo', 'anio'), sep = '_') %>% 
+  pivot_wider(names_from = tipo, values_from = valor)
+
+glimpse(data_long)
+
+```
+
+
+```{r }
+#explorar datos
+data <- import("C:/Users/luisl/iCloudDrive/r/data_disparidad/data/data.xlsx")
+glimpse(data_c)
+```
