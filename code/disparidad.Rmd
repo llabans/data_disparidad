@@ -2,7 +2,7 @@
 title: "disparidad"
 author: "L"
 date: "2023-09-27"
-github_document: foo.md
+output: github_document
 ---
 
 
