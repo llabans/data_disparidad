@@ -2,11 +2,13 @@
 title: "disparidad"
 author: "L"
 date: "2023-09-27"
-output: github_document
+output:
+  html_document:
+    keep_md: true
 ---
 
 
-```{r }
+```{r, eval=TRUE }
 #Paquetes
 
 library(tidyverse)
@@ -20,7 +22,7 @@ data <- import("C:/Users/luisl/iCloudDrive/r/data_disparidad/data/data.xlsx")
 ```
 
 
-```{r }
+```{r,eval=TRUE  }
 #elimnar columnas
 
 data_c <- data %>%
@@ -31,13 +33,13 @@ glimpse(data_c)
 ```
 
 
-```{r }
+```{r, eval=TRUE}
 #filtrar data
 data_c <- data_c %>% slice(2:25)
 
 ```
 
-```{r }
+```{r, eval=TRUE }
 
 # setear nombres de columnas
 colnames(data_c) <- c("departmento", "pop_2003", "pop_2012", "nacidovivo_2003", "nacidovivo_2012", "ingresopc_2003", "ingresopc_2012", "mortinf_2003", "mortinf_2012",                     "mortniñez_2003", "mortniñez_2012", "incidtb_2003", "incidtb_2012",
@@ -48,14 +50,14 @@ glimpse(data_c)
 ```
 
 
-```{r }
+```{r, eval=TRUE }
 # formato numerico...
 data_c <- data_c %>% mutate(across(-departmento, as.numeric))
 glimpse(data_c)
 ```
 ## 
 
-```{r }
+```{r, eval=TRUE }
 # Convertir datos a formato largo
 data_long <- data_c %>%  
   pivot_longer(
@@ -71,7 +73,7 @@ glimpse(data_long)
 ```
 
 
-```{r }
+```{r, eval=TRUE }
 #explorar datos
 data <- import("C:/Users/luisl/iCloudDrive/r/data_disparidad/data/data.xlsx")
 glimpse(data_c)
