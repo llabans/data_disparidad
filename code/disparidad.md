@@ -248,7 +248,7 @@ g1
 
 ``` r
 ################################################################################
-# Tabla: Metrics of country-level inequalities in TB incidence according to social stratifiers and year assessed -----------------
+# Tabla: Inequidades -----------------
 
 glimpse(brecha_des)
 ```
