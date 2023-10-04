@@ -187,7 +187,7 @@ hexp_2003 <- hexp_2003 %>%
 slope_index_2003 <- f_2003$coefficients[2]
 
 
-# 2005
+# 2012
 hexp_2012 <- hexp %>% filter(year == 2012)
 
 f_2012 <- lm(hexp_2012$yiwi ~ hexp_2012$wi + hexp_2012$xiwi + 0)
