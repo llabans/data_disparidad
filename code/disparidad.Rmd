@@ -59,7 +59,7 @@ glimpse(data_c)
 
 ```{r, eval=TRUE }
 # Convertir datos a formato largo
-data_long <- data_c %>%  
+data_long_w <- data_c %>%  
   pivot_longer(
     cols = -departmento, 
     names_to = "variable", 
@@ -73,8 +73,404 @@ glimpse(data_long)
 ```
 
 
-```{r, eval=TRUE }
-#explorar datos
-data <- import("C:/Users/luisl/iCloudDrive/r/data_disparidad/data/data.xlsx")
-glimpse(data_c)
+
+```{r}
+inequality_clean <- data_long_w %>% 
+  select(year = anio,
+         hexp = ingresopc, #ingpc, espvid
+         ir_mi = mortinf, #inctb, mortinf, mortnin, razmed
+         population = nacidovivo, #pob, nacviv
+         country = departmento) %>% 
+  mutate(num_mortinfant = ir_mi*population/1000)
+glimpse(inequality_clean)
+
 ```
+
+
+```{r, eval=TRUE }
+
+################################################################################
+brecha_des <- inequality_clean %>% 
+  select(year, hexp, population, ir_mi) %>%              # Seleccionamos variables de interes
+  filter(year %in% c(2003, 2012)) %>%              # Filtramos años de interes
+  group_by(year) %>% 
+  mutate(qhexp = cut(hexp, quantile(hexp),
+                     include.lowest = TRUE,
+                     labels=c("Q1","Q2","Q3","Q4"))) %>% # Agrupar por cuantiles en funcion del gasto en salud
+  ungroup() %>% 
+  group_by(year, qhexp) %>% 
+  mutate(qph = sum(population)) %>%                      # Suma de la poblacion de cada cuantil
+  ungroup() %>% 
+  group_by(year) %>% 
+  mutate(wpoph = qph/sum(population),                    # Proporcion de la poblacion de cada cuantil sobre el total
+         wpop = population/qph,                          # tasa entre la poblacion y la poblacion de cada su cuartil
+         wrate = wpop*ir_mi) %>%                         # Ajustamos la incidencia en funcion a la poblacion
+  ungroup() %>% 
+  group_by(year, qhexp) %>% 
+  summarise(meanh = round(sum(wrate), 2),                # Sumamos la incidencia por cada cuantil
+            wpoph = mean(wpoph)) %>%                  
+  ungroup()
+
+g1 <- brecha_des %>% 
+  ggplot(aes(x = factor(year), y = meanh, fill = qhexp))+
+  geom_col(position = 'dodge', color="black", linewidth=0.7) + 
+  geom_label(aes(label = meanh), color="black", fill="white",
+             position = position_dodge2(width = 0.9),
+             size = 4, hjust = 0.5, vjust = -0.5)+
+  scale_fill_brewer(palette = 1,
+                    labels = c('Q1 Más pobres', 'Q2', 'Q3', 'Q4 Menos pobres'))+
+  labs(x = 'Cuántiles del gasto total en salud por persona', 
+       y = "Mortalidad de menores de 5 años\ntasa x 1,000 nacidos vivos",
+       fill = '',
+       caption = "\nFuente: Ministerio de Salud y OPS/OMS")+
+  scale_y_continuous(limits= c(0,52), breaks = seq(0,50,10), expand = c(0,0))+
+  theme(legend.position = c(0.82, 0.87))
+g1
+
+```
+
+```{r}
+################################################################################
+# Tabla: Metrics of country-level inequalities in TB incidence according to social stratifiers and year assessed -----------------
+
+glimpse(brecha_des)
+
+df_aki <- brecha_des %>% 
+  group_by(year) %>% 
+  mutate(absolute_Kuznets_index = first(meanh) - last(meanh)) %>% 
+  summarise(absolute_Kuznets_index = mean(absolute_Kuznets_index))
+
+df_rki <- brecha_des %>% 
+  group_by(year) %>% 
+  mutate(relative_Kuznets_index = first(meanh) / last(meanh)) %>% 
+  summarise(relative_Kuznets_index = mean(relative_Kuznets_index))
+
+df_indices <- df_aki %>% 
+  left_join(df_rki)
+
+df_indices
+glimpse(df_indices)
+
+```
+
+```{r}
+# Figura 2: Health inequality for Health expenditure per capita ----------------
+
+## 2.1) Filtramos años de interes y creamos variables
+hexp <- inequality_clean %>% 
+  select(country, year, population, hexp, num_mortinfant, ir_mi) %>%        # Seleccionamos variables de interes
+  filter(year %in% c(2003, 2012)) %>%                               # Filtramos años de interes
+  group_by(year) %>% 
+  arrange(hexp) %>%                                          # Ordenamos la tabla en funcion a la gasto en salud (de menor a mayor)
+  mutate(wpop = population/sum(population),                  # Tasa entre la poblacion y la poblacion de cada su cuartil
+         cwpop = cumsum(wpop),                               # Suma acumulada de la tasa anterior
+         ridit = (cwpop + lag(cwpop, default = 0))/2,        # Media movil de la suma acumulada (ventana de dos)
+         whealth = num_mortinfant/sum(num_mortinfant),           # Proporcion de casos respecto al total
+         cwhealth = cumsum(whealth),                         # Suma acumulada de la proporcion anterior
+         logridit = log10(ridit),                            # Logaritmo de ridit
+         wi = sqrt(population),                              
+         xiwi = wi*logridit,
+         yiwi = wi*ir_mi
+  ) %>% 
+  ungroup()
+
+## 2.2) Realizamos la prediccion para cada año
+
+# 2003
+hexp_2003 <- hexp %>% filter(year == 2003)
+
+f_2003 <- lm(hexp_2003$yiwi ~ hexp_2003$wi + hexp_2003$xiwi + 0)
+
+hexp_2003 <- hexp_2003 %>% 
+  mutate(predict = coef(summary(f_2003))[1,1] + coef(summary(f_2003))[2,1]*logridit)
+
+slope_index_2003 <- f_2003$coefficients[2]
+
+
+# 2005
+hexp_2012 <- hexp %>% filter(year == 2012)
+
+f_2012 <- lm(hexp_2012$yiwi ~ hexp_2012$wi + hexp_2012$xiwi + 0)
+
+hexp_2012 <- hexp_2012 %>% 
+  mutate(predict = coef(summary(f_2012))[1,1] + coef(summary(f_2012))[2,1]*logridit)
+
+slope_index_2012 <- f_2012$coefficients[2]
+
+
+## 2.3) Unimos las tablas generadas para cada año
+hexp_2002_2012 <- bind_rows(hexp_2003, hexp_2012)
+
+## 2.4) Graficamos
+
+g2 <- hexp_2002_2012 %>% 
+  ggplot()+
+  geom_point(aes(x = ridit, y = ir_mi, color = factor(year), shape = factor(year)), size =3)+
+  geom_line(aes(x = ridit, y = predict, color = factor(year), linetype = factor(year)), size = 1.5)+
+       
+  labs(x = 'Gradiente de población a nivel de departamento definido \npor el gasto total en salud por persona',
+       y = "Mortalidad de menores de 5 años\ntasa x 1,000 nacidos vivos",
+       caption = "\nFuente: Ministerio de Salud y OPS/OMS",
+      color = 'Años', shape = 'Años', linetype = 'Años')+
+  scale_y_continuous(limits= c(4,56), breaks = seq(5,55,10))+
+  theme(legend.position = c(0.82, 0.87))
+
+g2
+```
+
+```{r}
+
+################################################################################
+# Figura 3: Concentration Curve: health expenditure per capita -----------------
+
+## 3.1) Generamos las funciones para el calculo de la curva
+ccurve_f <- function(k,mydata){
+  sum((mydata$y-(exp(mydata$x/(k-mydata$x))-1)/(exp(1/(k-1))-1)))^2
+}
+f<-function(x,k) {
+  (exp(x/(k-x))-1)/(exp(1/(k-1))-1)
+}
+
+## 3.2) Calculo de la curva por años
+
+# 2003
+df_ano_curve <- rbind(c(0, 0), hexp_2003 %>%
+                        select(y = cwhealth, x = cwpop))
+
+ccurve <- optimx(par=-1.5, fn=ccurve_f, mydata=df_ano_curve, control=list(all.methods=TRUE, save.failures=TRUE, maxit=2500))
+x<-seq(0,1,0.01)
+k<-ccurve[1,1]
+line_curve_1 <-f(x,k)
+
+# 2012
+df_ano_curve <- rbind(c(0, 0), hexp_2012 %>%
+                        select(y = cwhealth, x = cwpop))
+
+ccurve <- optimx(par=-1.5, fn=ccurve_f, mydata=df_ano_curve, control=list(all.methods=TRUE, save.failures=TRUE, maxit=2500))
+x<-seq(0,1,0.01)
+k<-ccurve[1,1]
+line_curve_2 <-f(x,k)
+
+
+## 3.3) Unimos las bases
+df_curvas <- bind_rows(data.frame(val = line_curve_1, x = x, ano = 2003),
+                       data.frame(val = line_curve_2, x = x, ano = 2012))
+
+## 3.4) Graficamos
+
+g3 <- bind_rows(hexp_2003, hexp_2012) %>% 
+  ggplot()+
+  geom_point(aes(x = cwpop, y = cwhealth, color = factor(year),
+                 fill = factor(year), shape = factor(year)), size = 2)+
+  geom_line(data = df_curvas, aes(x = x, y = val, color = factor(ano)))+
+  geom_line(data = df_curvas, aes(x = x, y = x))+
+  scale_color_brewer(type = 'qual', palette = 2)+
+  theme(legend.position = c(0.9, 0.1),
+        legend.spacing.y = unit(0, "mm"), 
+        panel.border = element_rect(colour = "black", fill=NA),
+        aspect.ratio = 1, axis.text = element_text(colour = 1, size = 12),
+        legend.background = element_blank(),
+        legend.box.background = element_rect(colour = "black"))+
+  labs(x = 'Gradiente de población a nivel de departamento definido \npor cuartiles de ingreso real per cápita mensual',
+       y = "Mortalidad de menores de 5 años\ntasa x 1,000 nacidos vivos",
+       caption = "\nFuente: Ministerio de Salud y OPS/OMS",
+       fill = 'Años', color = 'Años', linetype = 'Años', shape = 'Años')+
+  scale_y_continuous( expand = c(0,0.02))+
+  scale_x_continuous( expand = c(0,0.02))+
+  theme(
+    plot.title = element_text(hjust = 0.5, face = 'bold'),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
+g3
+```
+
+```{r}
+library(gdata)
+library(epiDisplay)
+library(grDevices)
+library(lattice)
+library(grid)
+library(scatterplot3d)
+library(arm)
+library(reldist)
+library(ineq)
+library(Hmisc)
+library(lawstat)
+library(car)
+library(gplots)
+library(plotly)
+library(latticeExtra)
+library(VIM)
+library(reshape)
+library(psych)
+library(optimx) ## algoritmo
+```
+
+
+```{r}
+
+#2003
+# dplyr
+library(dplyr)
+
+# Filtrar los datos para el año 2003 y ordenar por 'hexp'
+hexp2003sort <- inequality_clean %>%
+  filter(year == "2003") %>%
+  arrange(hexp) %>%
+  mutate(
+    population = as.numeric(population), # Convertir la población a numérico
+    totalp = sum(population, na.rm = TRUE), # Calcular la suma total de la población
+    totaltb = sum(num_mortinfant, na.rm = TRUE), # Calcular la suma total de num_mortinfant
+    Wpop = population / totalp, # Calcular Wpop
+    CWpop = cumsum(Wpop) # Calcular CWpop
+  )
+
+
+hexp2003sort
+
+# Para el gráfico, si es necesario
+# ph <- ggplot(hexp2003sort, aes(x = country, y = hexp)) + geom_col()
+
+# ph <- ggplot(hexp2010, aes(country, hexp)) + geom_col()
+# ggplotly(ph)
+```
+
+```{r}
+#2003
+# Cargar librerías necesarias
+library(dplyr)
+library(ggplot2)
+```
+
+
+
+```{r}
+# Preparación de datos
+hexp2010sort <- inequality_clean %>%
+  filter(year == "2003") %>%
+  arrange(hexp) %>%
+  mutate(
+    population = as.numeric(population),
+    totalp = sum(population, na.rm = TRUE),
+    totaltb = sum(num_mortinfant, na.rm = TRUE),
+    Wpop = population / totalp,
+    CWpop = cumsum(Wpop),
+    ridit = (lag(CWpop, default = 0) + CWpop) / 2,
+    Whealth = num_mortinfant / totaltb,
+    CWhealth = cumsum(Whealth),
+    logridit = log10(ridit),
+    Wi = sqrt(population),
+    XiWi = Wi * logridit,
+    YiWi = Wi * ir_mi
+  )
+
+# Modelamiento
+fit2003 <- lm(YiWi ~ Wi + XiWi + 0, data = hexp2010sort)
+fit_summary <- summary(fit2003)
+
+# Predicción
+hexp2010sort <- hexp2010sort %>%
+  mutate(predict2010 = coef(fit_summary)[1] + coef(fit_summary)[2] * logridit)
+
+# Gráfico
+ggplot(hexp2010sort, aes(x = ridit, y = ir_mi)) +
+  geom_point(color = "red", shape = 0) +
+  geom_line(aes(y = predict2010), color = "red", lty = 1) +
+  labs(
+    x = "Country-level population gradient defined by total health expenditure per capita",
+    y = "Tasa de incidencia de mortalidad infantil x 1000 nacidos vivos"
+  )
+```
+
+```{r}
+# Carga las bibliotecas necesarias
+library(dplyr)
+
+# Función para calcular los ridits
+calculate_ridits <- function(cwpop) {
+  sapply(1:length(cwpop), function(i) {
+    if (i == 1) {
+      return (0 + cwpop[i]) / 2
+    } else {
+      return (cwpop[i - 1] + cwpop[i]) / 2
+    }
+  })
+}
+
+# Análisis para el año 2005
+hexp2005sort <- hexp %>%
+  filter(year == "2012") %>% # Filtra por año (nota que el código original usaba "2012", no "2005")
+  arrange(hexp) %>%          # Ordena por hexp
+  mutate(
+    Wpop = population / sum(population),
+    CWpop = cumsum(Wpop),
+    ridit = calculate_ridits(CWpop),
+    Whealth = num_mortinfant / sum(num_mortinfant),
+    CWhealth = cumsum(Whealth),
+    logridit = log10(ridit),
+    Wi = sqrt(population),
+    XiWi = Wi * logridit,
+    YiWi = Wi * ir_mi
+  )
+
+# Ajustar modelo lineal
+fit2012 <- lm(YiWi ~ Wi + XiWi + 0, data = hexp2005sort)
+
+# Resumen del modelo
+fit_summary <- summary(fit2012)
+
+# Predicciones para el año 2005
+hexp2005sort <- hexp2005sort %>% 
+  mutate(predict2005 = coef(fit_summary)[1] + coef(fit_summary)[2] * logridit)
+
+```
+
+```{r}
+
+################################################################################
+## Grafico 
+# Combinar los datos de 2005 y 2010 en un único conjunto de datos
+hexp_combined <- bind_rows(
+  hexp2005sort %>% mutate(year = "2003", prediction = predict2005),
+  hexp2010sort %>% mutate(year = "2012", prediction = predict2010)
+)
+
+# Gráfico con ggplot2
+ggplot(hexp_combined, aes(x = ridit, y = ir_mi, color = factor(year))) +
+  geom_point(aes(shape = factor(year)), size = 3) + 
+  geom_line(aes(y = prediction, linetype = factor(year))) +
+  scale_color_manual(values = c("blue", "red")) +
+  scale_shape_manual(values = c(16, 17)) +
+  scale_linetype_manual(values = c("dashed", "solid")) +
+  labs(
+    title = "Tuberculosis Incidence Rates vs Health Expenditure",
+    y = "Tuberculosis incidence rates per 100,000 population",
+    x = "Country-level population gradient defined by total health expenditure per capita"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_blank()) +
+  guides(color = guide_legend(override.aes = list(shape = c(16, 17))))
+
+
+```
+```{r}
+################################################################################
+# Social gradient
+slope_index_of_inequality_hexp2003<-fit2003$coefficients[2]
+slope_index_of_inequality_hexp2012<-fit2012$coefficients[2]
+
+
+
+round(slope_index_of_inequality_hexp2003,2)
+round(slope_index_of_inequality_hexp2012,2)
+```
+```{r}
+summary_fit2003 
+
+
+```
+
+```{r}
+summary_fit2012 
+```
+
