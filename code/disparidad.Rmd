@@ -3,8 +3,7 @@ title: "disparidad"
 author: "L"
 date: "2023-09-27"
 output:
-  html_document:
-    keep_md: true
+  github_document
 ---
 
 
@@ -57,7 +56,7 @@ glimpse(data_c)
 ```
 ## 
 
-```{r, eval=TRUE }
+```{r }
 # Convertir datos a formato largo
 data_long_w <- data_c %>%  
   pivot_longer(
@@ -68,7 +67,7 @@ data_long_w <- data_c %>%
   separate(variable, into = c('tipo', 'anio'), sep = '_') %>% 
   pivot_wider(names_from = tipo, values_from = valor)
 
-glimpse(data_long)
+glimpse(data_long_w)
 
 ```
 
@@ -465,12 +464,12 @@ round(slope_index_of_inequality_hexp2003,2)
 round(slope_index_of_inequality_hexp2012,2)
 ```
 ```{r}
-summary_fit2003 
+print(fit2003) 
 
 
 ```
 
 ```{r}
-summary_fit2012 
+print(fit2012) 
 ```
 
